@@ -108,4 +108,106 @@ public class OrderCalcTests
             new() { 9, 11, 105 }
         }).Returns(8);
     }
+    
+    [TestCaseSource(nameof(MaxPriceOddValueOddIndexCases))]
+    public double ПроверяетсяМаксимальнаяНечётнаяЦена(List<double> prices)
+    {
+        return _orderCalc.MaxPriceOddValueOddIndex(prices);
+    }
+
+    private static IEnumerable<TestCaseData> MaxPriceOddValueOddIndexCases()
+    {
+        yield return new TestCaseData(new List<double>())
+            .SetName("01_ПустойСписок_ВозвращаетсяНоль")
+            .SetDescription("Путь: 1-2-3-10(Нет)-11")
+            .Returns(0.0);
+
+        yield return new TestCaseData(new List<double> { 99, 2.4 })
+            .SetName("02_ЧётнаяЦелаяЧасть_ЭлементПропускается")
+            .SetDescription("Путь: 1-2-3-4-5-9-3-10(Нет)-11")
+            .Returns(0.0);
+
+        yield return new TestCaseData(new List<double> { 99, -3.7 })
+            .SetName("03_ПерваяПодходящаяЦена_ПринимаетсяДажеОтрицательная")
+            .SetDescription("Путь: 1-2-3-4-5-6-8-9-3-10(Да)-11")
+            .Returns(-3.7);
+
+        yield return new TestCaseData(new List<double> { 99, 2.4, 101, 4.8 })
+            .SetName("04_ОбеЦелыеЧастиЧётные_ВозвращаетсяНоль")
+            .SetDescription("Путь: 1-2-3-4-5-9-3-4-5-9-3-10(Нет)-11")
+            .Returns(0.0);
+
+        yield return new TestCaseData(new List<double> { 99, 2.4, 101, -3.7 })
+            .SetName("05_ПервыйЭлементПропущен_ВторойСтановитсяМаксимумом")
+            .SetDescription("Путь: 1-2-3-4-5-9-3-4-5-6-8-9-3-10(Да)-11")
+            .Returns(-3.7);
+
+        yield return new TestCaseData(new List<double> { 99, -3.7, 101, 2.4 })
+            .SetName("06_МаксимумНайден_СледующаяЧётнаяЦелаяЧастьПропускается")
+            .SetDescription("Путь: 1-2-3-4-5-6-8-9-3-4-5-9-3-10(Да)-11")
+            .Returns(-3.7);
+
+        yield return new TestCaseData(new List<double> { 99, -3.7, 101, -1.9 })
+            .SetName("07_СледующаяПодходящаяЦенаБольше_МаксимумОбновляется")
+            .SetDescription("Путь: 1-2-3-4-5-6-8-9-3-4-5-6-7-8-9-3-10(Да)-11")
+            .Returns(-1.9);
+
+        yield return new TestCaseData(new List<double> { 99, 5.9, 101, 3.7 })
+            .SetName("08_СледующаяПодходящаяЦенаМеньше_МаксимумСохраняется")
+            .SetDescription("Путь: 1-2-3-4-5-6-8-9-3-4-5-6-7-9-3-10(Да)-11")
+            .Returns(5.9);
+    }
+    
+    [TestCaseSource(nameof(SumEvenAboveSecondaryDiagonalCases))]
+    public int ПроверяетсяСуммаЧётныхВышеПобочнойДиагонали(
+        List<List<int>> a)
+    {
+        return _orderCalc.SumEvenAboveSecondaryDiagonal(a);
+    }
+
+    private static IEnumerable<TestCaseData> SumEvenAboveSecondaryDiagonalCases()
+    {
+        yield return new TestCaseData(new List<List<int>>())
+            .SetName("01_ПустаяМатрица_ВозвращаетсяНоль")
+            .SetDescription("Путь: 1-2-3-4-11")
+            .Returns(0);
+
+        yield return new TestCaseData(new List<List<int>>
+            {
+                new() { 8 }
+            })
+            .SetName("02_ЭлементНаПобочнойДиагонали_НеУчитывается")
+            .SetDescription("Путь: 1-2-3-4-5-6-10-4-11")
+            .Returns(0);
+
+        yield return new TestCaseData(new List<List<int>>
+            {
+                new() { -4, 100 },
+                new() { 200, 300 }
+            })
+            .SetName("03_C0_ЧётныйЭлементВышеПобочнойДиагонали_Добавляется")
+            .SetDescription("Путь: 1-2-3-4-5-6-7-8-9-6-10-4-5-6-10-4-11")
+            .Returns(-4);
+
+        yield return new TestCaseData(new List<List<int>>
+            {
+                new() { 3, 100 },
+                new() { 200, 300 }
+            })
+            .SetName("04_НечётныйЭлементВышеПобочнойДиагонали_Пропускается")
+            .SetDescription("Путь: 1-2-3-4-5-6-7-9-6-10-4-5-6-10-4-11")
+            .Returns(0);
+
+        yield return new TestCaseData(new List<List<int>>
+            {
+                new() {   2,   3, 100 },
+                new() {  -4, 200, 300 },
+                new() { 400, 500, 600 }
+            })
+            .SetName("05_НесколькоЧётныхЭлементов_Суммируются")
+            .SetDescription(
+                "Путь: 1-2-3-4-5-6-7-8-9-6-7-9-6-10" +
+                "-4-5-6-7-8-9-6-10-4-5-6-10-4-11")
+            .Returns(-2);
+    }
 }

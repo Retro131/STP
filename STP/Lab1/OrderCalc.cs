@@ -33,14 +33,14 @@ public class OrderCalc : IOrderCalc
         {
             return -1.0;
         }
-        
+
         var result = total - discount + shipping;
-        
+
         if (result < 0)
         {
             result = 0.0;
         }
-        
+
         return Math.Round(result * 100) / 100;
     }
 
@@ -71,4 +71,40 @@ public class OrderCalc : IOrderCalc
 
         return (int)sum;
     }
-}  
+
+    public double MaxPriceOddValueOddIndex(List<double> prices)
+    {
+        double? max = null;
+
+        for (var i = 1; i < prices.Count; i += 2)
+        {
+            var price = prices[i];
+
+            if (Math.Truncate(price) % 2 != 0 && (!max.HasValue || price > max.Value))
+            {
+                max = price;
+            }
+        }
+
+        return max ?? 0.0;
+    }
+
+    public int SumEvenAboveSecondaryDiagonal(List<List<int>> a)
+    {
+        var n = a.Count;
+        var sum = 0;
+
+        for (var i = 0; i < n; i++)
+        {
+            for (var j = 0; j < n - i - 1; j++)
+            {
+                if (a[i][j] % 2 == 0)
+                {
+                    sum += a[i][j];
+                }
+            }
+        }
+
+        return sum;
+    }
+}
