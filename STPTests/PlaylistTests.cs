@@ -30,7 +30,7 @@ public class PlaylistTests
     }
 
     [Test]
-    [Description("Конструктор: capacity < 0 -> исключение. Вторая ветвь покрыта созданием плейлистов в остальных тестах.")]
+    [Description("Конструктор: capacity <= 0 -> исключение. Вторая ветвь покрыта созданием плейлистов в остальных тестах.")]
     public void Constructor_NegativeCapacity_Throws()
     {
         Action act = () => new Playlist(-1);

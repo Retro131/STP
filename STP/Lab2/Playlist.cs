@@ -30,14 +30,13 @@ public class Playlist
             
             UniqueTracks.Clear();
 
-            for (var i = 0; i < Count; i++)
-                UniqueTracks.Add(Tracks[i]);
+            UniqueTracks = new HashSet<Track>(Tracks);
         }
     }
 
     public Playlist(int capacity)
     {
-        if (capacity < 0)
+        if (capacity <= 0)
         {
             throw new PlaylistException("Playlist capacity must be positive");
         }
@@ -90,18 +89,13 @@ public class Playlist
 
     public void Merge(Playlist other)
     {
-        var unique = new HashSet<Track>();
-
-        for (var i = 0; i < Count; i++)
-            unique.Add(Tracks[i]);
-
         var toAdd = new List<Track>();
 
         for (var i = 0; i < other.Count; i++)
         {
             var track = other.Tracks[i];
 
-            if (unique.Add(track))
+            if (UniqueTracks.Contains(track))
                 toAdd.Add(track);
         }
 
@@ -112,23 +106,17 @@ public class Playlist
         {
             Tracks[Count] = track;
             Count++;
+            UniqueTracks.Add(track);
         }
-        
-        UniqueTracks = unique;
     }
 
     public void RemoveTracksOf(Playlist other)
     {
-        var toRemove = new HashSet<Track>();
-
-        for (var i = 0; i < other.Count; i++)
-            toRemove.Add(other.Tracks[i]);
-
         var write = 0;
 
         for (var i = 0; i < Count; i++)
         {
-            if (toRemove.Contains(Tracks[i]))
+            if (other.UniqueTracks.Contains(Tracks[i]))
                 continue;
 
             Tracks[write] = Tracks[i];
@@ -139,9 +127,9 @@ public class Playlist
             throw new PlaylistException("No matching tracks found");
 
         Array.Clear(Tracks, write, Count - write);
-        Count = write;
+        Count = write;    
         
-        UniqueTracks.ExceptWith(toRemove);
+        UniqueTracks.ExceptWith(other.UniqueTracks);
     }
 
     public int TotalDuration()
@@ -158,7 +146,7 @@ public class Playlist
     {
         for (var i = 0; i < Count; i++)
         {
-            if (Tracks[i].Artist == artist)
+            if (string.CompareOrdinal(Tracks[i].Artist, artist) == 0)
             {
                 return i;
             }
