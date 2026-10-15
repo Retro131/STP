@@ -15,11 +15,11 @@ public class TaskManagerTests
 
         manager.AddTask(
             "Task1", "Description1",
-            Priority.High, Status.InProgress);
+            Priority.High, Status.InProgress, 0);
 
         manager.AddTask(
             "Task2", "Description2",
-            Priority.Low, Status.Done);
+            Priority.Low, Status.Done, 0);
 
         var tasks = manager.GetTasks();
 
@@ -74,4 +74,86 @@ public class TaskManagerTests
         manager.GetProjects().Should().ContainSingle()
             .Which.Id.Should().Be(2);
     }
+    
+    
+    [Test]
+    public void TaskManager_MoveTaskToProject()
+    {
+        var manager = new TaskManager();
+
+        manager.AddProject("Project1");
+        manager.AddProject("Project2");
+
+        manager.AddTask(
+            "Task1", "Description1",
+            Priority.High, Status.InProgress, 1);
+
+        manager.AddTask(
+            "Task2", "Description2",
+            Priority.Low, Status.Todo, 0);
+
+        manager.MoveTaskToProject(-1, 2).Should().BeFalse();
+        manager.MoveTaskToProject(2, 2).Should().BeFalse();
+
+        manager.MoveTaskToProject(0, 99).Should().BeFalse();
+        manager.GetTasks()[0].ProjectId.Should().Be(1);
+
+        manager.MoveTaskToProject(0, 2).Should().BeTrue();
+
+        var task = manager.GetTasks()[0];
+
+        task.ProjectId.Should().Be(2);
+        task.Id.Should().Be(1);
+        task.Title.Should().Be("Task1");
+        task.Description.Should().Be("Description1");
+        task.Priority.Should().Be(Priority.High);
+        task.Status.Should().Be(Status.InProgress);
+
+        manager.MoveTaskToProject(0, 0).Should().BeTrue();
+
+        manager.GetTasks()[0].ProjectId.Should().Be(0);
+        manager.GetTasks()[1].ProjectId.Should().Be(0);
+        manager.GetTasks().Should().HaveCount(2);
+    }
+    
+    
+    [Test]
+    public void TaskManager_ProjectStatisticsAndCascadeDelete()
+    {
+        var manager = new TaskManager();
+
+        manager.AddProject("Project1");
+        manager.AddProject("Project2");
+        manager.AddProject("EmptyProject");
+
+        manager.AddTask("Task1", "", Priority.High, Status.Done, 1);
+        manager.AddTask("Task2", "", Priority.Low, Status.Done, 2);
+        manager.AddTask("Task3", "", Priority.Low, Status.InProgress, 1);
+        manager.AddTask("Task4", "", Priority.High, Status.Done, 0);
+        manager.AddTask("Task5", "", Priority.Medium, Status.Todo, 1);
+
+        manager.CountTasksInProject(1).Should().Be(3);
+        manager.CountTasksInProject(2).Should().Be(1);
+        manager.CountTasksInProject(3).Should().Be(0);
+        manager.CountTasksInProject(0).Should().Be(1);
+
+        manager.CountTasksInProjectByStatus(1, Status.Done).Should().Be(1);
+        manager.CountTasksInProjectByStatus(1, Status.InProgress).Should().Be(1);
+        manager.CountTasksInProjectByStatus(1, Status.Todo).Should().Be(1);
+        manager.CountTasksInProjectByStatus(2, Status.Todo).Should().Be(0);
+
+        manager.CompletionPercent(1).Should().BeApproximately(100.0 / 3, 0.0001);
+        manager.CompletionPercent(2).Should().Be(100.0);
+        manager.CompletionPercent(3).Should().Be(0.0);
+
+        manager.DeleteProject(0);
+
+        manager.GetTasks().Select(t => t.Id).Should().Equal(2, 4);
+        manager.GetProjects().Select(p => p.Id).Should().Equal(2, 3);
+
+        manager.CountTasksInProject(1).Should().Be(0);
+        manager.CountTasksInProject(2).Should().Be(1);
+        manager.CountTasksInProject(0).Should().Be(1);
+    }
+
 }
