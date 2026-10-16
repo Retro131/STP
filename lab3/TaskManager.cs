@@ -50,7 +50,8 @@ public class TaskManager
         task.ProjectId = projectId;
         taskRepository.Update(taskIndex, task);
 
-        return true;    }
+        return true;    
+    }
     
     public int CountTasksInProject(int projectId) => 
         taskRepository.
@@ -60,8 +61,7 @@ public class TaskManager
     public int CountTasksInProjectByStatus(int projectId, Status status) => 
         taskRepository.
             GetAll().
-            Where(t => t.ProjectId == projectId).
-            Count(t => t.Status == status);
+            Count(t => t.ProjectId == projectId && t.Status == status);
 
     public double CompletionPercent(int projectId)
     {
@@ -71,7 +71,7 @@ public class TaskManager
             return 0.0;
         }
         var completedTasks = CountTasksInProjectByStatus(projectId, Status.Done);
-        return  100.0 * completedTasks / allTasks;
+        return 100.0 * completedTasks / allTasks;
     }
     
     public List<Task> GetTasks() => taskRepository.GetAll();
