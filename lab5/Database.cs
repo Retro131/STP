@@ -85,9 +85,7 @@ public sealed class Database
 
         if (cell.Length > 30)
         {
-            throw new ArgumentException(
-                "Код ячейки не должен превышать 30 символов.",
-                nameof(cell));
+            throw new ArgumentException("Код ячейки не должен превышать 30 символов.", nameof(cell));
         }
 
         var isPhone = LooksLikePhone(contact);
@@ -113,8 +111,7 @@ public sealed class Database
 
         if (result is not int id)
         {
-            throw new InvalidOperationException(
-                "База данных не вернула идентификатор нового заказа.");
+            throw new InvalidOperationException("База данных не вернула идентификатор нового заказа.");
         }
 
         var code = "PVZ-" + id.ToString("D6", CultureInfo.InvariantCulture);
@@ -130,8 +127,7 @@ public sealed class Database
 
         if (affectedRows != 1)
         {
-            throw new InvalidOperationException(
-                "Не удалось присвоить код новому заказу.");
+            throw new InvalidOperationException("Не удалось присвоить код новому заказу.");
         }
 
         await transaction.CommitAsync(cancellationToken);
@@ -141,8 +137,7 @@ public sealed class Database
 
     public Task<bool> IssueOrderAsync(string code, CancellationToken cancellationToken = default)
     {
-        return ChangeReadyOrderStatusAsync(
-            code, OrderStatuses.Issued, cancellationToken);
+        return ChangeReadyOrderStatusAsync(code, OrderStatuses.Issued, cancellationToken);
     }
 
     public Task<bool> CancelOrderAsync(string code, CancellationToken cancellationToken = default)
@@ -242,8 +237,7 @@ public sealed class Database
 
         if (affectedRows != 1)
         {
-            throw new InvalidOperationException(
-                "Не удалось изменить статус заблокированного заказа.");
+            throw new InvalidOperationException("Не удалось изменить статус заблокированного заказа.");
         }
 
         await transaction.CommitAsync(cancellationToken);

@@ -14,9 +14,9 @@ namespace lab5Tests;
 [TestOf(typeof(Database))]
 public class DatabaseTest
 {
-    private string connectionString = null!;
-    private NpgsqlDataSource dataSource = null!;
-    private Database database = null!;
+    private string connectionString = null;
+    private NpgsqlDataSource dataSource = null;
+    private Database database = null;
 
     [OneTimeSetUp]
     public void ConfigureDatabase()
@@ -38,9 +38,9 @@ public class DatabaseTest
     {
         await ClearOrdersAsync();
 
-        await database.AddOrderAsync("+78005553535", "A1");
+        await database.AddOrderAsync("+79990001122", "A1");
         await database.AddOrderAsync("ART-123456789", "");
-        await database.AddOrderAsync("+78005553535", "B12");
+        await database.AddOrderAsync("+79990001122", "B12");
     }
 
     [TearDown]
@@ -56,7 +56,6 @@ public class DatabaseTest
             await dataSource.DisposeAsync();
     }
 
-    // телефон, артикул, повторный телефон.
     [Test]
     public async Task AddOrder_SavesExpectedFields()
     {
@@ -69,7 +68,7 @@ public class DatabaseTest
         {
             Assert.That(orders, Has.Count.EqualTo(3));
 
-            Assert.That(first.Phone, Is.EqualTo("+78005553535"));
+            Assert.That(first.Phone, Is.EqualTo("+79990001122"));
             Assert.That(first.Article, Is.Empty);
             Assert.That(first.Cell, Is.EqualTo("A1"));
 
@@ -85,9 +84,8 @@ public class DatabaseTest
         });
     }
 
-    // короткий ввод не создаёт заказ.
     [Test]
-    public async Task AddOrder_ShortContact_DoesNotCreateOrder()
+    public async Task AddOrder_ShortContact()
     {
         Assert.ThrowsAsync<ArgumentException>(async () => await database.AddOrderAsync("abc", "A1"));
 
@@ -96,11 +94,10 @@ public class DatabaseTest
         Assert.That(orders, Has.Count.EqualTo(3));
     }
 
-    // Поиск по телефону, артикулу и коду.
     [Test]
     public async Task ListOrders_FindsByPhoneArticleAndCode()
     {
-        var byPhone = await database.ListOrdersAsync("+7800");
+        var byPhone = await database.ListOrdersAsync("+7999");
         var byArticle = await database.ListOrdersAsync("art-");
         var byCode = await database.ListOrdersAsync("000002");
 
@@ -120,7 +117,6 @@ public class DatabaseTest
         });
     }
 
-    //  фильтрация по статусу и получение всех заказов.
     [Test]
     public async Task ListByStatus_ReturnsExpectedOrders()
     {
@@ -141,7 +137,6 @@ public class DatabaseTest
         });
     }
 
-    // выдача и запрет повторной выдачи.
     [Test]
     public async Task IssueOrder_IssuesOnceAndPreservesCell()
     {
@@ -165,7 +160,6 @@ public class DatabaseTest
         });
     }
 
-    //  отмена ready и запрет отмены issued.
     [Test]
     public async Task CancelOrder_CancelsReadyButKeepsIssued()
     {
@@ -192,7 +186,6 @@ public class DatabaseTest
         });
     }
 
-    // сводка и списки для каждого статуса.
     [Test]
     public async Task BuildReport_CountsCurrentStatuses()
     {
@@ -222,7 +215,6 @@ public class DatabaseTest
         });
     }
 
-    // подсчёт и удаление только закрытых заказов.
     [Test]
     public async Task DeleteClosedOrders_KeepsReadyOrder()
     {
@@ -246,7 +238,6 @@ public class DatabaseTest
         });
     }
 
-    // SQL-инъекция не превращается в условие запроса.
     [Test]
     public async Task Orders_PersistAndSearchRejectsSqlInjection()
     {
