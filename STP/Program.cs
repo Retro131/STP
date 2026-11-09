@@ -1,231 +1,260 @@
-﻿using System.Text;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
-using Npgsql;
+﻿using Lab7.Application.Exceptions;
+using Lab7.Application.Interfaces;
+using Lab7.Application.Services;
+using Lab7.Infrastructure;
+using Lab7.Infrastructure.Repositories;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
-namespace lab5;
+Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-internal static class Program
+var connectionString = "Host=localhost;Port=5433;Database=lab7;Username=postgres;Password=123";
+
+var services = new ServiceCollection();
+
+services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(connectionString));
+
+services.AddScoped<IAssetRepository, AssetRepository>();
+services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+services.AddScoped<IAssignmentRepository, AssignmentRepository>();
+services.AddScoped<IIssuanceRepository, IssuanceRepository>();
+
+services.AddScoped<AssetService>();
+services.AddScoped<EmployeeService>();
+services.AddScoped<AssignmentService>();
+
+await using var provider = services.BuildServiceProvider(
+    new ServiceProviderOptions
+    {
+        ValidateScopes = true,
+        ValidateOnBuild = true
+    });
+
+var suffix = Guid.NewGuid().ToString("N")[..8];
+var email = $"ivan-{suffix}@example.com";
+var secondEmail = $"anna-{suffix}@example.com";
+var inventoryNumber = $"CAM-{suffix}";
+
+var employeeId = Guid.Empty;
+var secondEmployeeId = Guid.Empty;
+var assetId = Guid.Empty;
+
+await Test("Добавление фотографов и техники", async sp =>
 {
-    private static async Task Main(string[] args)
+    var employees = sp.GetRequiredService<EmployeeService>();
+    var assets = sp.GetRequiredService<AssetService>();
+    var db = sp.GetRequiredService<AppDbContext>();
+
+    await employees.AddEmployeeAsync("Иван Иванов", email);
+    await employees.AddEmployeeAsync("Анна Петрова", secondEmail);
+    await assets.AddAssetAsync(inventoryNumber, "Canon R6", "Камера");
+
+    employeeId = await db.Employees
+        .Where(x => x.Email == email)
+        .Select(x => x.Id)
+        .SingleAsync();
+
+    secondEmployeeId = await db.Employees
+        .Where(x => x.Email == secondEmail)
+        .Select(x => x.Id)
+        .SingleAsync();
+
+    var asset = await db.Assets.AsNoTracking()
+        .SingleAsync(x => x.InventoryNumber == inventoryNumber);
+
+    assetId = asset.Id;
+
+    Check(!asset.Assigned, "Новая техника должна быть в стойке");
+});
+
+await Test("Запрет повторного email", sp =>
+    sp.GetRequiredService<EmployeeService>()
+        .AddEmployeeAsync("Дубль", email),
+    $"Фотограф с email {email} уже существует");
+
+await Test("Запрет повторного инвентарного номера", sp =>
+    sp.GetRequiredService<AssetService>()
+        .AddAssetAsync(inventoryNumber, "Другая камера", "Камера"),
+    $"Инвентарный номер {inventoryNumber} уже существует");
+
+await Test("Редактирование фотографа", async sp =>
+{
+    await sp.GetRequiredService<EmployeeService>()
+        .UpdateEmployeeAsync(
+            employeeId, "Иван Сидоров", email, true);
+
+    var employee = await sp.GetRequiredService<AppDbContext>()
+        .Employees.AsNoTracking()
+        .SingleAsync(x => x.Id == employeeId);
+
+    Check(employee.FullName == "Иван Сидоров", "ФИО не обновлено");
+});
+
+await Test("Запрет чужого email при редактировании", sp =>
+    sp.GetRequiredService<EmployeeService>()
+        .UpdateEmployeeAsync(
+            employeeId, "Ошибочное имя", secondEmail, false),
+    $"Фотограф с email {secondEmail} уже существует");
+
+await Test("Проверка отсутствия частичного обновления", async sp =>
+{
+    var employee = await sp.GetRequiredService<AppDbContext>()
+        .Employees.AsNoTracking()
+        .SingleAsync(x => x.Id == employeeId);
+
+    Check(
+        employee.FullName == "Иван Сидоров"
+        && employee.Email == email
+        && employee.Active,
+        "После ошибки изменились данные фотографа");
+});
+
+await Test("Выдача техники", async sp =>
+{
+    await sp.GetRequiredService<AssignmentService>()
+        .IssueAsync(assetId, employeeId);
+
+    var db = sp.GetRequiredService<AppDbContext>();
+
+    Check(
+        await db.Assets.AnyAsync(x => x.Id == assetId && x.Assigned),
+        "Статус техники не изменился");
+
+    Check(
+        await db.Assignments.AnyAsync(x =>
+            x.AssetId == assetId
+            && x.EmployeeId == employeeId
+            && x.ReturnedAt == null),
+        "Активная выдача не создана");
+});
+
+await Test("Запрет повторной выдачи", sp =>
+    sp.GetRequiredService<AssignmentService>()
+        .IssueAsync(assetId, secondEmployeeId),
+    "Техника уже выдана");
+
+await Test("Запрет увольнения с техникой", sp =>
+    sp.GetRequiredService<EmployeeService>()
+        .UpdateEmployeeAsync(
+            employeeId, "Иван Сидоров", email, false),
+    "У фотографа на руках техника. Для начала верните технику");
+
+await Test("Возврат техники", async sp =>
+{
+    await sp.GetRequiredService<AssignmentService>()
+        .GiveBackAsync(assetId);
+
+    var db = sp.GetRequiredService<AppDbContext>();
+
+    Check(
+        await db.Assets.AnyAsync(x => x.Id == assetId && !x.Assigned),
+        "Техника не вернулась в стойку");
+
+    var assignment = await db.Assignments.AsNoTracking()
+        .SingleAsync(x => x.AssetId == assetId);
+
+    Check(assignment.ReturnedAt != null, "Дата возврата не заполнена");
+
+    Check(
+        assignment.ReturnedAt >= assignment.IssuedAt,
+        "Возврат оказался раньше выдачи");
+});
+
+await Test("Запрет повторного возврата", sp =>
+    sp.GetRequiredService<AssignmentService>()
+        .GiveBackAsync(assetId),
+    "Нет активной выдачи для этой техники");
+
+await Test("Увольнение после возврата", async sp =>
+{
+    await sp.GetRequiredService<EmployeeService>()
+        .UpdateEmployeeAsync(
+            employeeId, "Иван Сидоров", email, false);
+
+    Check(
+        await sp.GetRequiredService<AppDbContext>()
+            .Employees.AnyAsync(x => x.Id == employeeId && !x.Active),
+        "Фотограф не уволен");
+});
+
+await Test("Запрет выдачи уволенному", sp =>
+    sp.GetRequiredService<AssignmentService>()
+        .IssueAsync(assetId, employeeId),
+    "Нельзя выдать уволенному фотографу");
+
+await Test("Повторная выдача другому фотографу", async sp =>
+{
+    await sp.GetRequiredService<AssignmentService>()
+        .IssueAsync(assetId, secondEmployeeId);
+
+    var db = sp.GetRequiredService<AppDbContext>();
+
+    Check(
+        await db.Assignments.CountAsync(x => x.AssetId == assetId) == 2,
+        "История выдач не сохранилась");
+
+    Check(
+        await db.Assignments.CountAsync(x =>
+            x.AssetId == assetId && x.ReturnedAt == null) == 1,
+        "Должна существовать одна активная выдача");
+});
+
+await Test("Список техники с держателем", async sp =>
+{
+    var rows = await sp.GetRequiredService<AssetService>()
+        .GetAllWithHoldersAsync();
+
+    var row = rows.Single(x => x.asset.Id == assetId);
+
+    Check(row.asset.Assigned, "Неверный статус в списке");
+    Check(row.holder == "Анна Петрова", "Неверный держатель");
+});
+
+await Test("Держатель очищается после возврата", async sp =>
+{
+    await sp.GetRequiredService<AssignmentService>()
+        .GiveBackAsync(assetId);
+
+    var rows = await sp.GetRequiredService<AssetService>()
+        .GetAllWithHoldersAsync();
+
+    var row = rows.Single(x => x.asset.Id == assetId);
+
+    Check(!row.asset.Assigned && row.holder == "",
+        "После возврата статус или держатель не сброшены");
+});
+
+Console.WriteLine("\nВсе проверки пройдены.");
+
+async Task Test(
+    string name,
+    Func<IServiceProvider, Task> action,
+    string? expectedError = null)
+{
+    await using var scope = provider.CreateAsyncScope();
+
+    try
     {
-        Console.OutputEncoding = Encoding.UTF8;
-        Console.InputEncoding = Encoding.UTF8;
+        await action(scope.ServiceProvider);
+    }
+    catch (DomainException exception) when (expectedError != null)
+    {
+        Check(
+            exception.Message == expectedError,
+            $"Ожидалось: {expectedError}\nПолучено: {exception.Message}");
 
-        try
-        {
-            await using var dataSource = CreateDataSource(args);
-
-            await using (var connection = await dataSource.OpenConnectionAsync())
-            {
-                Console.WriteLine(
-                    $"Подключено: {connection.Database}, {connection.Host}:{connection.Port}");
-            }
-
-            var database = new Database(dataSource);
-            await RunMenuAsync(database);
-        }
-        catch (PostgresException exception)
-        {
-            Console.Error.WriteLine($"Ошибка PostgreSQL: {exception.MessageText}");
-            Environment.ExitCode = 1;
-        }
-        catch (NpgsqlException)
-        {
-            Console.Error.WriteLine("Не удалось подключиться к PostgreSQL. Проверь настройки и запуск Docker.");
-            Environment.ExitCode = 1;
-        }
-        catch (Exception exception) when (
-            exception is IOException or InvalidOperationException or FormatException or ArgumentException)
-        {
-            Console.Error.WriteLine($"Ошибка запуска: {exception.Message}");
-            Environment.ExitCode = 1;
-        }
+        Console.WriteLine($"OK: {name}");
+        return;
     }
 
-    private static NpgsqlDataSource CreateDataSource(string[] args)
-    {
-        var builder = Host.CreateApplicationBuilder(args);
-        var configPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
-        builder.Configuration.AddJsonFile(configPath, optional: false);
+    Check(expectedError == null, $"Не возникла ожидаемая ошибка: {name}");
 
-        var connectionString = builder.Configuration.GetConnectionString("Postgres");
-        if (string.IsNullOrWhiteSpace(connectionString))
-            throw new InvalidOperationException("В appsettings.json не задана ConnectionStrings:Postgres.");
+    Console.WriteLine($"OK: {name}");
+}
 
-        return NpgsqlDataSource.Create(connectionString);
-    }
-
-    private static async Task RunMenuAsync(Database database)
-    {
-        while (true)
-        {
-            Console.WriteLine("""
-
-                              1. Все заказы / поиск
-                              2. Принять заказ
-                              3. Выдать заказ
-                              4. Отменить заказ
-                              5. Заказы по статусу
-                              6. Сводка по статусам
-                              7. Количество закрытых заказов
-                              8. Очистить историю
-                              0. Выход
-                              """);
-
-            Console.Write("Выбери действие: ");
-            var choice = Console.ReadLine()?.Trim();
-            if (choice is null or "0")
-                return;
-
-            try
-            {
-                switch (choice)
-                {
-                    case "1":
-                        var filter = ReadInput("Поиск (Enter — все заказы): ", allowEmpty: true);
-                        PrintOrders(await database.ListOrdersAsync(filter));
-                        break;
-
-                    case "2":
-                        var contact = ReadInput("Телефон или артикул: ");
-                        var cell = ReadInput("Ячейка (может быть пустой): ", allowEmpty: true);
-                        var code = await database.AddOrderAsync(contact, cell);
-                        Console.WriteLine($"Заказ принят. Код: {code}");
-                        break;
-
-                    case "3":
-                        var issueCode = ReadInput("Код заказа для выдачи: ");
-                        var issued = await database.IssueOrderAsync(issueCode);
-                        Console.WriteLine(issued
-                            ? "Заказ выдан."
-                            : "Заказ не найден или его статус отличается от ready.");
-                        break;
-
-                    case "4":
-                        var cancelCode = ReadInput("Код заказа для отмены: ");
-                        var cancelled = await database.CancelOrderAsync(cancelCode);
-                        Console.WriteLine(cancelled
-                            ? "Заказ отменён."
-                            : "Заказ не найден или его статус отличается от ready.");
-                        break;
-
-                    case "5":
-                        var status = ReadInput(
-                            "Статус (ready / issued / cancelled; Enter — все): ", allowEmpty: true);
-
-                        if (status.Length > 0 && status != OrderStatuses.Ready &&
-                            status != OrderStatuses.Issued && status != OrderStatuses.Cancelled)
-                        {
-                            Console.WriteLine("Неизвестный статус.");
-                            break;
-                        }
-
-                        PrintOrders(await database.ListByStatusAsync(status));
-                        break;
-
-                    case "6":
-                        await PrintReportAsync(database);
-                        break;
-
-                    case "7":
-                        Console.WriteLine(
-                            $"Закрытых заказов: {await database.CountClosedOrdersAsync()}");
-                        break;
-
-                    case "8":
-                        await ClearHistoryAsync(database);
-                        break;
-
-                    default:
-                        Console.WriteLine("Введи номер пункта меню.");
-                        break;
-                }
-            }
-            catch (EndOfStreamException)
-            {
-                return;
-            }
-            catch (PostgresException exception)
-            {
-                Console.WriteLine($"Ошибка PostgreSQL: {exception.MessageText}");
-            }
-            catch (NpgsqlException)
-            {
-                Console.WriteLine("Ошибка обращения к БД. Проверь, что контейнер PostgreSQL запущен.");
-            }
-            catch (Exception exception) when (
-                exception is ArgumentException or InvalidOperationException or OverflowException)
-            {
-                Console.WriteLine($"Ошибка: {exception.Message}");
-            }
-        }
-    }
-
-    private static async Task PrintReportAsync(Database database)
-    {
-        var report = await database.BuildReportAsync();
-        Console.WriteLine($"К выдаче (ready): {report.ReadyCount}");
-        Console.WriteLine($"Выдано (issued): {report.IssuedCount}");
-        Console.WriteLine($"Отменено (cancelled): {report.CancelledCount}");
-    }
-
-    private static async Task ClearHistoryAsync(Database database)
-    {
-        var count = await database.CountClosedOrdersAsync();
-        if (count == 0)
-        {
-            Console.WriteLine("Закрытых заказов нет.");
-            return;
-        }
-
-        var answer = ReadInput(
-            $"Сейчас закрытых заказов: {count}. Удалить все выданные и отменённые? (да/нет): ");
-
-        if (!string.Equals(answer, "да", StringComparison.OrdinalIgnoreCase))
-        {
-            Console.WriteLine("Удаление отменено.");
-            return;
-        }
-
-        var deleted = await database.DeleteClosedOrdersAsync();
-        Console.WriteLine($"Удалено заказов: {deleted}");
-    }
-
-    private static void PrintOrders(List<Order> orders)
-    {
-        if (orders.Count == 0)
-        {
-            Console.WriteLine("Заказы не найдены.");
-            return;
-        }
-
-        Console.WriteLine($"Найдено заказов: {orders.Count}");
-
-        foreach (var order in orders)
-        {
-            Console.WriteLine($"\n{order.Code} | id: {order.Id} | {order.Status} | {order.CreatedAt}");
-            Console.WriteLine($"  Телефон: {Display(order.Phone)}");
-            Console.WriteLine($"  Артикул: {Display(order.Article)}");
-            Console.WriteLine($"  Ячейка:  {Display(order.Cell)}");
-        }
-    }
-
-    private static string Display(string value) => string.IsNullOrEmpty(value) ? "—" : value;
-
-    private static string ReadInput(string prompt, bool allowEmpty = false)
-    {
-        while (true)
-        {
-            Console.Write(prompt);
-            var value = Console.ReadLine()
-                        ?? throw new EndOfStreamException("Ввод завершён.");
-
-            value = value.Trim();
-            if (allowEmpty || value.Length > 0)
-                return value;
-
-            Console.WriteLine("Значение не должно быть пустым.");
-        }
-    }
+static void Check(bool condition, string message)
+{
+    if (!condition)
+        throw new InvalidOperationException(message);
 }
