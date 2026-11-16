@@ -42,7 +42,7 @@ public class AssignmentConfiguration : IEntityTypeConfiguration<Assignment>
         builder.HasOne(x => x.Asset)
             .WithMany(x => x.Assignments)
             .HasForeignKey(x => x.AssetId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(x => x.AssetId)
             .IsUnique()

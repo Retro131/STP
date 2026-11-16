@@ -43,6 +43,41 @@ public class AssetService(IAssetRepository assetRepository)
         return assetRepository.GetAllWithHoldersAsync(ct);
     }
     
+    public async Task DuplicateAssetAsync(
+        Guid sourceId,
+        string newInventoryNumber,
+        CancellationToken ct = default)
+    {
+        var source = await assetRepository.GetByIdAsync(sourceId, ct);
+
+        if (source is null)
+        {
+            throw new DomainException("Исходная техника не найдена");
+        }
+
+        await AddAssetAsync(
+            newInventoryNumber,
+            source.Model,
+            source.Category,
+            ct);
+    }
+    
+    public async Task DeleteAssetCascadeAsync(
+        Guid assetId,
+        CancellationToken ct = default)
+    {
+        var asset = await assetRepository.GetByIdAsync(assetId, ct)
+                    ?? throw new DomainException("Техника не найдена");
+
+        if (asset.Assigned)
+        {
+            throw new DomainException(
+                "Нельзя удалить выданную технику — сначала примите возврат");
+        }
+
+        await assetRepository.DeleteAsync(asset, ct);
+    }
+    
     private static void Validate(string inventoryNumber, string model, string category)
     {
         var messages = new List<string>();

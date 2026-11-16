@@ -45,4 +45,10 @@ public class AssetRepository(AppDbContext dbContext) : IAssetRepository
         dbContext.Assets.Update(asset);
         await dbContext.SaveChangesAsync(ct);
     }
+    
+    public async Task DeleteAsync(Asset asset, CancellationToken ct)
+    {
+        dbContext.Assets.Remove(asset);
+        await dbContext.SaveChangesAsync(ct);
+    }
 }
