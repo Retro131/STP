@@ -77,4 +77,99 @@ public class IssuanceRepository : IIssuanceRepository
 
         await transaction.CommitAsync(ct);
     }
+    public async Task IssueMultipleAsync(IReadOnlyCollection<Guid> assetIds, Guid employeeId, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(assetIds);
+
+        if (assetIds.Count == 0)
+        {
+            throw new DomainException("Не выбрано ни одной единицы техники");
+        }
+        
+        await using var transaction = await _dbContext.Database
+            .BeginTransactionAsync(IsolationLevel.Serializable, ct);
+
+        var employee = await _employeeRepository.GetByIdAsync(employeeId, ct)
+                       ?? throw new DomainException("Фотограф не найден");
+
+        if (!employee.Active)
+        {
+            throw new DomainException("Нельзя выдать уволенному фотографу");
+        }
+
+        var assets = await _assetRepository.GetByIdsAsync(assetIds, ct);
+
+        foreach (var asset in assets.Where(asset => asset.Assigned))
+        {
+            throw new DomainException($"Техника {asset.InventoryNumber} уже выдана");
+        }
+
+        var issuedAt = DateTime.UtcNow;
+
+        foreach (var asset in assets)
+        {
+            asset.Assigned = true;
+
+            await _assetRepository.UpdateAsync(asset, ct);
+
+            var assignment = new Assignment
+            {
+                AssetId = asset.Id,
+                EmployeeId = employeeId,
+                IssuedAt = issuedAt,
+                ReturnedAt = null
+            };
+
+            await _assignmentRepository.AddAsync(assignment, ct);
+        }
+
+        await transaction.CommitAsync(ct);
+    }
+    public async Task ReassignAssetAsync(Guid assetId, Guid newEmployeeId, CancellationToken ct = default)
+    {
+        await using var transaction = await _dbContext.Database
+            .BeginTransactionAsync(IsolationLevel.Serializable, ct);
+
+        var asset = await _assetRepository.GetByIdAsync(assetId, ct)
+                    ?? throw new DomainException("Техника не найдена");
+
+        if (!asset.Assigned)
+        {
+            throw new DomainException("Техника не выдана — используйте «Выдать»");
+        }
+
+        var newEmployee = await _employeeRepository.GetByIdAsync(newEmployeeId, ct)
+                          ?? throw new DomainException("Фотограф не найден");
+
+        if (!newEmployee.Active)
+        {
+            throw new DomainException("Нельзя переназначить уволенному фотографу");
+        }
+
+        var currentAssignment = await _assignmentRepository.GetActiveByAssetIdAsync(assetId, ct)
+                                ?? throw new DomainException("Нет активной выдачи");
+
+        if (currentAssignment.EmployeeId == newEmployeeId)
+        {
+            throw new DomainException("Техника уже у этого фотографа");
+        }
+
+        var now = DateTime.UtcNow;
+
+        currentAssignment.ReturnedAt = now;
+
+        await _assignmentRepository.UpdateAsync(currentAssignment, ct);
+
+        var newAssignment = new Assignment
+        {
+            AssetId = assetId,
+            EmployeeId = newEmployeeId,
+            IssuedAt = now,
+            ReturnedAt = null
+        };
+
+        await _assignmentRepository.AddAsync(newAssignment, ct);
+
+        await transaction.CommitAsync(ct);
+    }
 }

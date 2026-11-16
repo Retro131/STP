@@ -13,4 +13,14 @@ public class AssignmentService(IIssuanceRepository issuanceRepository)
     {
         return issuanceRepository.GiveBackAsync(assetId, ct);
     }
+    
+    public Task IssueMultipleAsync(IReadOnlyCollection<Guid> assetIds, Guid employeeId, CancellationToken ct = default)
+    {
+        return issuanceRepository.IssueMultipleAsync(assetIds, employeeId, ct);
+    }
+    
+    public Task ReassignAssetAsync(Guid assetId, Guid newEmployeeId, CancellationToken ct = default)
+    {
+        return issuanceRepository.ReassignAssetAsync(assetId, newEmployeeId, ct);
+    }
 }

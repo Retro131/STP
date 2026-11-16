@@ -9,5 +9,8 @@ public interface IAssetRepository
     Task AddAsync(Asset asset, CancellationToken ct = default);
     Task<List<AssetRow>> GetAllWithHoldersAsync(CancellationToken ct = default);
     Task UpdateAsync(Asset asset, CancellationToken ct);
+    Task UpdateAsync(IReadOnlyCollection<Asset> assets, CancellationToken ct);
     Task<Asset?> GetByIdAsync(Guid assetId, CancellationToken ct);
+    Task<List<Asset>> GetByIdsAsync(IReadOnlyCollection<Guid> assetIds, CancellationToken ct);
+    Task DeleteAsync(Asset asset, CancellationToken ct);
 }
